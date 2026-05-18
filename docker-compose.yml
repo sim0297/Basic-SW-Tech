@@ -1,0 +1,15 @@
+services:
+  llm-platform:
+    build: .
+    container_name: llm_platform
+    ports:
+      - "8705:8705"
+    volumes:
+      - ./uploads:/app/uploads
+      - ./results:/app/results
+      - ./.env:/app/.env
+    environment:
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
