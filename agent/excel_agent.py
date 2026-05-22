@@ -21,6 +21,28 @@ def set_file_manager(fm) -> None:
 
 
 # ──────────────────────────────────────────────────────────
+# 파일 범위 제한 (file scope)
+#   - 사용자가 칩으로 특정 파일을 태그하면, 에이전트가 그 파일만 보도록
+#     제한한다. None 이면 전체 파일 허용.
+# ──────────────────────────────────────────────────────────
+
+_file_scope: Optional[list[str]] = None
+
+
+def set_file_scope(names: Optional[list[str]]) -> None:
+    """작업 대상 파일을 제한한다 (None 또는 빈 목록 = 전체 허용)."""
+    global _file_scope
+    _file_scope = list(names) if names else None
+
+
+def _scoped(names: list[str]) -> list[str]:
+    """파일명 목록을 현재 범위로 거른다 (범위 미설정 시 그대로)."""
+    if _file_scope is None:
+        return names
+    return [n for n in names if n in _file_scope]
+
+
+# ──────────────────────────────────────────────────────────
 # 결과 파일 레지스트리
 #   - 에이전트 실행 중 도구가 생성한 결과 파일 경로를 모은다.
 #   - 채팅 페이지가 실행 직후 get_created_files() 로 회수해
@@ -55,11 +77,19 @@ def _register(path) -> Path:
 
 @tool
 def list_uploaded_files() -> str:
-    """업로드된 모든 파일 목록과 메타데이터(행수·열수·크기)를 반환합니다."""
+    """업로드된 파일 목록과 메타데이터(행수·열수·크기)를 반환합니다."""
     files = _file_manager.list_files()
+    scoped = _file_scope is not None
+    if scoped:
+        files = [f for f in files if f.name in _file_scope]
     if not files:
         return "업로드된 파일이 없습니다."
     lines = []
+    if scoped:
+        lines.append(
+            "⚠️ 사용자가 아래 파일만 작업 대상으로 지정했습니다. "
+            "다른 파일은 절대 사용하지 말고, 이 목록에 있는 파일만 처리하세요."
+        )
     for f in files:
         lines.append(
             f"- {f.name}: {f.rows}행 × {f.cols}열 / {f.size_kb:.1f}KB / "
@@ -130,6 +160,7 @@ def merge_files_average(filenames: list[str]) -> str:
     merge_files_by_key 를 사용하라.
     결과는 results/ 폴더에 저장된다.
     """
+    filenames = _scoped(filenames)  # 사용자가 지정한 범위로 제한
     dfs: list[pd.DataFrame] = []
     missing: list[str] = []
     for name in filenames:
@@ -161,6 +192,7 @@ def merge_files_average(filenames: list[str]) -> str:
 @tool
 def merge_files_concat(filenames: list[str]) -> str:
     """여러 파일을 단순히 행 방향으로 이어붙입니다. 결과는 results/ 폴더에 저장됩니다."""
+    filenames = _scoped(filenames)  # 사용자가 지정한 범위로 제한
     dfs: list[pd.DataFrame] = []
     for name in filenames:
         df = _file_manager.read_file(name)
@@ -195,6 +227,7 @@ def merge_files_by_key(filenames: list[str], key_column: str = "") -> str:
 
     "여러 파일을 하나로 통합", "동일 항목은 평균" 류의 요청은 거의 항상 이 도구를 쓴다.
     """
+    filenames = _scoped(filenames)  # 사용자가 지정한 범위로 제한
     named: list[tuple[str, pd.DataFrame]] = []
     missing: list[str] = []
     for name in filenames:
@@ -378,6 +411,9 @@ _SYSTEM_PROMPT = """당신은 엑셀/CSV 파일 처리와 일반 대화를 함�
   단어만 보고 merge_files_average 를 고르지 마세요. 항목 식별이 필요하면
   merge_files_by_key 입니다.
 - "N개 파일" 처럼 개수만 말하면 list_uploaded_files 로 업로드된 전체 파일을 대상으로 하세요.
+- "X의 값/합계는 얼마?" 같은 단순 조회·계산 질문에는 lookup_rows 로 실제 값을
+  읽어 숫자로 답하세요. aggregate_file·filter_file·merge 등 파일 생성 도구는
+  사용자가 "표/파일로 만들어 달라"고 명시할 때만 사용하세요.
 
 기준 컬럼(key_column) 처리:
 - 사용자가 기준 컬럼을 명시하지 않으면 key_column 을 빈 문자열("")로 두세요.
@@ -402,7 +438,15 @@ _SYSTEM_PROMPT = """당신은 엑셀/CSV 파일 처리와 일반 대화를 함�
   어떤 안내도 하지 마세요.
 - 결과 파일을 하이퍼링크나 "파일 보기", "결과 보기" 같은 링크로 만들지 마세요.
   파일 경로도 답변에 쓰지 마세요. 다운로드 버튼은 답변 아래에 앱이 자동으로 표시합니다.
-- 답변 본문도 간결하게, 핵심 결과 위주로 한국어로 작성하세요."""
+- 답변 본문도 간결하게, 핵심 결과 위주로 한국어로 작성하세요.
+
+[답변 정합성 — 매우 중요]
+- 답변에 쓰는 모든 수치는 도구 실행 결과에서 직접 가져오세요. 도구가 반환하지
+  않은 값을 추정하거나 지어내지 마세요.
+- 도구를 실행하지 않고 머릿속 계산만으로 수치를 답하지 마세요. 반드시 도구로
+  실제 값을 확인한 뒤 답하세요.
+- 결과 파일을 생성했다면, 답변 내용(수치·항목)은 반드시 그 파일의 내용과
+  일치해야 합니다. 파일과 다른 별도 계산값을 답하지 마세요."""
 
 
 def build_excel_agent(

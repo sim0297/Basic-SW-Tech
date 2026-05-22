@@ -1,4 +1,6 @@
+import difflib
 import json
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -109,10 +111,52 @@ class FileManager:
             self._save_meta(meta)
         return True
 
+    def resolve_filename(self, name: str) -> Optional[str]:
+        """
+        사용자가 입력한 근사 파일명을 실제 업로드된 파일명으로 해석한다.
+        정확 일치 → 정규화 포함 → 유사도(숫자 일치 가중) 순으로 찾는다.
+        예: "예실대비표5", "5예실", "5 예실대비표" → "5예실대비표.xlsx"
+        """
+        if not name:
+            return None
+        names = [f.name for f in self.list_files()]
+        if not names:
+            return None
+        if name in names:
+            return name
+
+        def _norm(s: str) -> str:
+            s = re.sub(r"\.(xlsx|xls|csv|parquet)$", "", s, flags=re.IGNORECASE)
+            return re.sub(r"[\s_.\-]", "", s.lower())
+
+        query_norm = _norm(name)
+        query_digits = set(re.findall(r"\d", name))
+
+        best, best_score = None, 0.0
+        for candidate in names:
+            cand_norm = _norm(candidate)
+            ratio = difflib.SequenceMatcher(None, query_norm, cand_norm).ratio()
+            cand_digits = set(re.findall(r"\d", candidate))
+            # 숫자가 같으면 가점, 다르면 강한 감점 (4·5·7 구분)
+            if query_digits and cand_digits:
+                digit_adj = 0.25 if query_digits == cand_digits else -0.4
+            else:
+                digit_adj = 0.0
+            contain = 0.2 if (query_norm in cand_norm or cand_norm in query_norm) else 0.0
+            score = ratio + digit_adj + contain
+            if score > best_score:
+                best_score, best = score, candidate
+
+        return best if best_score >= 0.6 else None
+
     def read_file(self, name: str) -> Optional[pd.DataFrame]:
         path = self.upload_dir / name
         if not path.exists():
-            return None
+            # 정확한 파일명이 아니면 근사 파일명으로 해석 시도 (퍼지 매칭)
+            resolved = self.resolve_filename(name)
+            if not resolved:
+                return None
+            path = self.upload_dir / resolved
         return self._read_df(path)
 
     def get_file_path(self, name: str) -> Optional[Path]:

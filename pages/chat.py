@@ -11,6 +11,7 @@ from agent.excel_agent import (
     get_created_files,
     reset_created_files,
     set_file_manager,
+    set_file_scope,
 )
 from agent.prompt_enhancer import classify_intent, enhance
 from config.settings import settings
@@ -178,6 +179,20 @@ for idx, msg in enumerate(st.session_state.messages):
         if msg.get("enhance"):
             _render_enhance_info(msg["enhance"])
 
+# ── 파일 칩 태그 ──────────────────────────────────────────
+# 파일명을 직접 타이핑하면 오타·표기 불일치로 못 찾으므로, 칩으로 정확히 지정.
+_tag_options = [f.name for f in file_manager.list_files()]
+tagged_files = (
+    st.pills(
+        "🏷 대상 파일 태그 — 클릭해 정확한 파일을 지정하세요 (선택)",
+        _tag_options,
+        selection_mode="multi",
+        key="tagged_files",
+    )
+    if _tag_options
+    else []
+)
+
 # ── 사용자 입력 (텍스트 + 파일 첨부) ──────────────────────
 chat_in = st.chat_input(
     "메시지 입력 — 엑셀/CSV 파일을 함께 첨부할 수 있습니다",
@@ -201,10 +216,16 @@ if chat_in:
         session.title = prompt_text[:30]
 
     # 2) 사용자 메시지 표시
-    user_display = prompt_text
+    prefixes = []
     if saved:
-        prefix = f"📎 첨부 업로드: {', '.join(saved)}"
-        user_display = f"{prefix}\n\n{prompt_text}" if prompt_text else prefix
+        prefixes.append(f"📎 첨부 업로드: {', '.join(saved)}")
+    if tagged_files:
+        prefixes.append(f"🏷 대상 파일: {', '.join(tagged_files)}")
+    if prefixes:
+        head = "\n".join(prefixes)
+        user_display = f"{head}\n\n{prompt_text}" if prompt_text else head
+    else:
+        user_display = prompt_text
 
     st.session_state.messages.append({"role": "user", "content": user_display})
     with st.chat_message("user"):
@@ -228,6 +249,8 @@ if chat_in:
     with st.chat_message("assistant"):
         set_file_manager(file_manager)
         reset_created_files()  # 이번 실행의 결과 파일 추적 시작
+        # 칩으로 태그한 파일이 있으면 그 파일만 작업 대상으로 제한 (하드 제약)
+        set_file_scope(tagged_files or None)
 
         # 직전까지의 대화 히스토리 (방금 추가한 사용자 입력 제외)
         history = []
@@ -240,6 +263,10 @@ if chat_in:
         ctx_parts = []
         if saved:
             ctx_parts.append(f"방금 업로드된 파일: {', '.join(saved)}")
+        if tagged_files:
+            ctx_parts.append(
+                f"대상 파일(정확한 파일명 — 이 파일들로 작업): {', '.join(tagged_files)}"
+            )
         ctx_parts.append(prompt_text)
         ctx = "\n\n".join(ctx_parts)
 
