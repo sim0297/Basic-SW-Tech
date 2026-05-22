@@ -11,7 +11,7 @@
 
 ### 개요
 
-LangChain tool-calling 에이전트가 사용자의 자연어 요청을 해석해, 8개의 엑셀 처리
+LangChain tool-calling 에이전트가 사용자의 자연어 요청을 해석해, 9개의 엑셀 처리
 도구 중 적절한 것을 자동으로 선택·실행합니다. 사용자는 도구 이름을 몰라도 의도만
 말하면 됩니다.
 
@@ -19,6 +19,7 @@ LangChain tool-calling 에이전트가 사용자의 자연어 요청을 해석�
 - **다중 LLM** — Ollama(로컬) / OpenAI / Anthropic / Google
 - **엑셀 통합** — 동일 양식 파일을 항목명 기준으로 통합 (3개 시트 결과)
 - **인라인 다운로드** — 결과 파일을 채팅 답변에서 바로 다운로드
+- **프롬프트 자동 보강** — 입력을 작업 유형에 맞는 지시로 자동 강화한 뒤 실행
 
 ### 기술 스택
 
@@ -44,13 +45,6 @@ pip install -r requirements.txt
 cp .env.example .env               # .env 에서 모델·API 키 설정
 streamlit run app.py               # 포트
 ```
-
-> ⚠️ **폴더명을 바꾸면 venv가 깨집니다.** 가상환경은 절대경로를 내부에
-> 저장하므로, 폴더명 변경 시 `.venv`를 재생성해야 합니다:
-> ```bash
-> rm -rf .venv && python3 -m venv .venv
-> source .venv/bin/activate && pip install -r requirements.txt
-> ```
 
 #### Docker 실행
 
@@ -106,18 +100,34 @@ ollama pull qwen3:14b              # tool-calling 지원 모델 필요
 2. `파일별비교` — 항목 × 컬럼별 각 파일 원본값 + 통합값
 3. `처리로그` — 기준 컬럼, 파일별 행수, 누락·불일치 항목
 
-### 🛠 에이전트 현재 빌트인 기본도구 8종
+### 🛠 에이전트 현재 빌트인 기본도구 9종
 
 | 도구 | 기능 |
 |---|---|
 | `list_uploaded_files` | 업로드 파일 목록 조회 |
-| `read_file_preview` | 파일 구조·미리보기 |
+| `read_file_preview` | 파일 구조·미리보기 (상위 20행) |
+| `lookup_rows` | 특정 항목·값을 가진 행을 찾아 전체 컬럼 값 조회 |
 | `merge_files_by_key` | 기준 컬럼 기반 통합 (3개 시트) |
 | `merge_files_average` | 행 위치 기반 평균 병합 |
 | `merge_files_concat` | 단순 이어붙이기 |
 | `filter_file` | 조건부 행 필터링 |
 | `aggregate_file` | 그룹별 집계 |
 | `get_statistics` | 통계 요약 |
+
+### 🪄 프롬프트 자동 보강 (Prompt Enhancer)
+
+사용자가 입력한 일반 프롬프트를 그대로 LLM에 넘기지 않고, 작업 목적에 맞는
+지시로 자동 강화한 뒤 실행합니다.
+
+| 단계 | 처리 |
+|---|---|
+| 의도 분류 | 입력을 6개 작업 유형(통합·분석·필터집계·통계·일반대화·미분류)으로 분류 |
+| 보강 | 유형별로 **persona·역할·처리 절차·출력 형식·제약사항**을 자동 결합 |
+| 적용 | 보강된 지시를 에이전트 시스템 메시지에 주입해 실행 |
+| 투명성 | 답변의 `🔍 적용된 프롬프트 보강`에서 보강 내역을 확인 가능 |
+
+- 사이드바의 **`프롬프트 자동 보강`** 토글로 켜고 끌 수 있습니다.
+- 일반 대화는 과도한 보강 없이 가볍게 처리됩니다.
 
 ### 📁 보조 화면
 
@@ -202,7 +212,7 @@ ollama pull qwen3:14b              # tool-calling 지원 모델 필요
 
 | Claude Code Skill | 본 프로젝트의 구현 |
 |---|---|
-| Skill 단위 | `@tool` 데코레이터가 붙은 함수 (8개) |
+| Skill 단위 | `@tool` 데코레이터가 붙은 함수 (9개) |
 | name + description | 함수명 + **docstring** |
 | 모델 주도 호출 | LangChain **tool-calling** — LLM이 프롬프트 보고 도구 선택 |
 | 스킬 사용 가이드 | `_SYSTEM_PROMPT` 의 도구 선택 가이드 |
@@ -210,7 +220,7 @@ ollama pull qwen3:14b              # tool-calling 지원 모델 필요
 
 **동작 예시** — 사용자가 *"파일들을 항목명 기준으로 통합해줘"* 라고 입력하면:
 
-1. LLM이 8개 도구의 `description`(docstring)을 검토합니다.
+1. LLM이 9개 도구의 `description`(docstring)을 검토합니다.
 2. `merge_files_by_key` 의 설명이 요청과 일치한다고 판단합니다.
 3. 해당 도구를 적절한 인자와 함께 **스스로 호출**합니다.
 4. 결과(통합 엑셀 생성)를 받아 한국어로 설명합니다.
@@ -237,7 +247,9 @@ ollama pull qwen3:14b              # tool-calling 지원 모델 필요
 Basic-SW-Tech/
 ├── app.py                  # st.navigation 진입점 (채팅이 기본 페이지)
 ├── .streamlit/config.toml  # 포트 고정
-├── config/settings.py      # 환경설정 (Pydantic)
+├── config/
+│   ├── settings.py         # 환경설정 (Pydantic)
+│   └── prompt_templates.py # 작업 유형별 보강 템플릿
 ├── core/
 │   ├── file_manager.py     # 파일 CRUD · 헤더 평탄화 · 숫자 변환
 │   ├── chat_manager.py     # 채팅 세션 → Markdown
@@ -245,7 +257,8 @@ Basic-SW-Tech/
 │   └── excel_processor.py  # 통합 · 병합 · 집계 · 다중 시트 저장
 ├── agent/
 │   ├── llm_factory.py      # LLM 프로바이더 팩토리
-│   └── excel_agent.py      # tool-calling 에이전트 (8개 도구 + 결과 레지스트리)
+│   ├── prompt_enhancer.py  # 프롬프트 자동 보강 (의도 분류 + 보강 엔진)
+│   └── excel_agent.py      # tool-calling 에이전트 (9개 도구 + 결과 레지스트리)
 ├── pages/
 │   ├── home.py             # 홈
 │   ├── chat.py             # 채팅 (메인 작업 공간)

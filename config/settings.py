@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     BASE_DIR: Path = Path(__file__).resolve().parent.parent
     UPLOAD_DIR: Path = BASE_DIR / "uploads"
     RESULTS_DIR: Path = BASE_DIR / "results"
+    CHATS_DIR: Path = BASE_DIR / "chats"
 
     MAX_UPLOAD_SIZE_MB: int = 100
     APP_TITLE: str = "KETI AI Platform"
@@ -30,6 +31,7 @@ def _init_settings() -> Settings:
     s = Settings()
     s.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     s.RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    s.CHATS_DIR.mkdir(parents=True, exist_ok=True)
     return s
 
 

@@ -70,11 +70,54 @@ def list_uploaded_files() -> str:
 
 @tool
 def read_file_preview(filename: str) -> str:
-    """파일의 컬럼 정보와 상위 5행 미리보기를 반환합니다."""
+    """파일의 컬럼 정보와 상위 20행 미리보기를 반환합니다."""
     df = _file_manager.read_file(filename)
     if df is None:
         return f"파일을 읽을 수 없습니다: {filename}"
-    return excel_processor.describe_df(df)
+    return excel_processor.describe_df(df, max_rows=20)
+
+
+@tool
+def lookup_rows(filename: str, value: str, column: str = "") -> str:
+    """
+    파일에서 특정 값과 일치하는 행을 찾아 그 행의 모든 컬럼 값을 반환합니다.
+    "X 항목의 Y 값은?" 처럼 특정 항목을 조회하는 질문에 사용하세요.
+    column 을 지정하면 그 컬럼에서만, 비워두면 모든 컬럼에서 value 를 검색합니다.
+    (미리보기는 일부 행만 보이므로, 특정 항목 조회는 이 도구를 쓰세요.)
+    """
+    df = _file_manager.read_file(filename)
+    if df is None:
+        return f"파일을 읽을 수 없습니다: {filename}"
+
+    df = df.copy()
+    df.columns = [str(c) for c in df.columns]
+    target = str(value)
+
+    if column and column in df.columns:
+        mask = df[column].astype(str).str.contains(target, case=False, na=False)
+        scope = f"'{column}' 컬럼"
+    else:
+        mask = df.apply(
+            lambda row: row.astype(str)
+            .str.contains(target, case=False, na=False)
+            .any(),
+            axis=1,
+        )
+        scope = "전체 컬럼"
+
+    hits = df[mask]
+    if hits.empty:
+        return f"'{value}' 와 일치하는 행이 없습니다 (검색 범위: {scope})."
+
+    limit = 10
+    lines = [f"'{value}' 검색 결과 — {len(hits)}개 행 (검색 범위: {scope})"]
+    for idx, row in hits.head(limit).iterrows():
+        lines.append(f"\n[행 {idx}]")
+        for col in df.columns:
+            lines.append(f"  {col}: {row[col]}")
+    if len(hits) > limit:
+        lines.append(f"\n... 외 {len(hits) - limit}개 행 생략")
+    return "\n".join(lines)
 
 
 @tool
@@ -289,6 +332,7 @@ def get_statistics(filename: str) -> str:
 ALL_TOOLS = [
     list_uploaded_files,
     read_file_preview,
+    lookup_rows,
     merge_files_average,
     merge_files_concat,
     merge_files_by_key,
@@ -312,7 +356,8 @@ _SYSTEM_PROMPT = """당신은 엑셀/CSV 파일 처리와 일반 대화를 함�
 
 사용 가능한 도구:
 - list_uploaded_files: 업로드된 파일 목록 조회
-- read_file_preview: 파일 내용 미리보기
+- read_file_preview: 파일 내용 미리보기 (상위 일부 행만 보임)
+- lookup_rows: 특정 항목·값을 가진 행을 찾아 그 행의 모든 값을 조회
 - merge_files_by_key: 동일 양식 파일을 기준 컬럼(항목명)으로 통합 — 파일 통합의 기본 선택
   (숫자=평균, 텍스트=동일 유지/상이 표시, 3개 시트 엑셀 생성)
 - merge_files_average: [거의 안 씀] 행 위치로만 평균 병합 (행 순서·개수가 완전히 같을 때만)
@@ -320,6 +365,11 @@ _SYSTEM_PROMPT = """당신은 엑셀/CSV 파일 처리와 일반 대화를 함�
 - filter_file: 조건으로 행 필터링
 - aggregate_file: 그룹별 집계
 - get_statistics: 통계 요약
+
+특정 항목 조회 주의:
+- "X 항목의 값은?" 같은 질문은 read_file_preview 만으로 판단하지 마세요.
+  미리보기는 일부 행만 보이므로, 반드시 lookup_rows 로 해당 항목을 검색한 뒤
+  답하세요. 미리보기에 없다고 "데이터가 없다"고 단정하지 마세요.
 
 도구 선택 가이드:
 - "여러 파일을 하나로 통합/합치기", "동일 항목/항목명 기준 통합", "같은 표 양식을
@@ -345,8 +395,11 @@ _SYSTEM_PROMPT = """당신은 엑셀/CSV 파일 처리와 일반 대화를 함�
 - 표나 목록에는 최종 결과값(금액·숫자)만 제시하세요.
 - 셀 안에 "(파일명, N행) + ... = 합계" 같은 계산 과정이나 참조 컬럼·행 출처를
   절대 넣지 마세요. 오직 최종 값만 표시합니다.
-- 계산 근거나 파일별 원본값이 필요하면, 생성된 엑셀의 '파일별비교' 시트를
-  확인하라고 한 줄로 안내만 하세요.
+- '파일별비교' 시트 안내는 merge_files_by_key 로 통합 엑셀을 **실제로 생성한
+  경우에만** 하세요. 단순 조회·계산 질문(예: "X 항목 금액 얼마야?")에는
+  결과값만 간결히 답하고, 파일·시트 안내를 덧붙이지 마세요.
+- 이번 응답에서 결과 파일을 만들지 않았다면, 파일·다운로드·시트와 관련된
+  어떤 안내도 하지 마세요.
 - 결과 파일을 하이퍼링크나 "파일 보기", "결과 보기" 같은 링크로 만들지 마세요.
   파일 경로도 답변에 쓰지 마세요. 다운로드 버튼은 답변 아래에 앱이 자동으로 표시합니다.
 - 답변 본문도 간결하게, 핵심 결과 위주로 한국어로 작성하세요."""
@@ -357,8 +410,11 @@ def build_excel_agent(
 ) -> AgentExecutor:
     llm = get_llm(provider, model, temperature=temperature)
 
+    # task_guidance: Prompt Enhancer가 생성한 작업별 보강 지시 (없으면 빈 문자열).
+    # 변수로 주입하므로 사용자 입력에 중괄호가 있어도 템플릿 파싱이 깨지지 않는다.
     prompt = ChatPromptTemplate.from_messages([
         ("system", _SYSTEM_PROMPT),
+        ("system", "{task_guidance}"),
         MessagesPlaceholder("chat_history", optional=True),
         ("human", "{input}"),
         MessagesPlaceholder("agent_scratchpad"),
