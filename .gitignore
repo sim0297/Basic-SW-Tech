@@ -1,0 +1,37 @@
+# ── Secrets / env ──
+.env
+.env.local
+!.env.example
+
+# ── Python ──
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+dist/
+
+# ── 사용자 데이터 (런타임 생성, 호스트별) ──
+uploads/*.csv
+uploads/*.xlsx
+uploads/*.xls
+uploads/*.parquet
+uploads/metadata.json
+results/*.md
+results/*.xlsx
+results/*.csv
+chats/*.json
+
+# ── 앱 설정 (호스트별) ──
+.streamlit/
+
+# ── 외부 데이터 ──
+.chroma/
+
+# ── OS / IDE ──
+.DS_Store
+.idea/
+.vscode/
+
+# ── 로컬 전용 문서 (의도적으로 git 외부 보관) ──
+CLAUDE.md
+docs/ROADMAP.md
