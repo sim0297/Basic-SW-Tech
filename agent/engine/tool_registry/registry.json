@@ -1,0 +1,74 @@
+[
+  {
+    "name": "list_uploaded_files",
+    "description": "업로드된 파일 목록과 메타데이터 조회",
+    "module": "agent.engine.tools.builtin.list_uploaded_files",
+    "function": "list_uploaded_files",
+    "source": "builtin",
+    "version": 1
+  },
+  {
+    "name": "read_file_preview",
+    "description": "파일 구조와 상위 20행 미리보기",
+    "module": "agent.engine.tools.builtin.read_file_preview",
+    "function": "read_file_preview",
+    "source": "builtin",
+    "version": 1
+  },
+  {
+    "name": "lookup_rows",
+    "description": "특정 값과 일치하는 행을 찾아 전체 컬럼 값 조회",
+    "module": "agent.engine.tools.builtin.lookup_rows",
+    "function": "lookup_rows",
+    "source": "builtin",
+    "version": 1
+  },
+  {
+    "name": "merge_files_average",
+    "description": "여러 파일을 행 위치 기준으로 평균 병합 (특수 케이스)",
+    "module": "agent.engine.tools.builtin.merge_files_average",
+    "function": "merge_files_average",
+    "source": "builtin",
+    "version": 1
+  },
+  {
+    "name": "merge_files_concat",
+    "description": "여러 파일을 행 방향으로 이어붙이기",
+    "module": "agent.engine.tools.builtin.merge_files_concat",
+    "function": "merge_files_concat",
+    "source": "builtin",
+    "version": 1
+  },
+  {
+    "name": "merge_files_by_key",
+    "description": "동일 양식 파일을 기준 컬럼(항목명) 기준으로 통합 — 파일 통합의 기본",
+    "module": "agent.engine.tools.builtin.merge_files_by_key",
+    "function": "merge_files_by_key",
+    "source": "builtin",
+    "version": 1
+  },
+  {
+    "name": "filter_file",
+    "description": "조건으로 행 필터링",
+    "module": "agent.engine.tools.builtin.filter_file",
+    "function": "filter_file",
+    "source": "builtin",
+    "version": 1
+  },
+  {
+    "name": "aggregate_file",
+    "description": "그룹별 집계 (mean/sum/count/min/max)",
+    "module": "agent.engine.tools.builtin.aggregate_file",
+    "function": "aggregate_file",
+    "source": "builtin",
+    "version": 1
+  },
+  {
+    "name": "get_statistics",
+    "description": "수치형 컬럼 통계 요약",
+    "module": "agent.engine.tools.builtin.get_statistics",
+    "function": "get_statistics",
+    "source": "builtin",
+    "version": 1
+  }
+]

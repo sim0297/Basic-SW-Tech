@@ -78,7 +78,8 @@ ollama pull qwen3:14b              # tool-calling 지원 모델 필요
 
 - **파일 첨부** — 입력창의 📎 버튼으로 엑셀/CSV 업로드
 - **자연어 제어** — "5개 파일을 통합하고 동일 항목은 평균으로" 처럼 요청
-- **에이전트 자동 라우팅** — 모드 전환 없이, 일반 대화와 파일 작업을 자동 판별
+- **에이전트 자동 라우팅** — Orchestrator 가 일반 대화는 LLM 직답으로,
+  파일 작업은 tool_loop 로 자동 분기 (모드 토글 없음)
 - **인라인 다운로드** — 결과 파일이 답변에 다운로드 버튼으로 표시되며,
   대화를 이어가도 버튼이 유지됨
 - **다중 모델** — 사이드바에서 프로바이더·모델 선택
@@ -145,7 +146,7 @@ ollama pull qwen3:14b              # tool-calling 지원 모델 필요
 
 ```
 ┌──────────────────────────────────────────────┐
-│              💬 채팅창 하나                    │
+│              💬 채팅창 하나                  │
 │                                              │
 │  📎 파일 첨부 ─▶ 자연어 요청 ─▶ 결과 다운로드   │
 └──────────────────────────────────────────────┘
@@ -235,9 +236,12 @@ ollama pull qwen3:14b              # tool-calling 지원 모델 필요
 - **자연어 인터페이스** — 사용자는 도구 이름을 몰라도 의도만 말하면 모델이
   적합한 도구를 선택합니다. 이것이 Skill 기반 설계의 핵심 가치입니다.
 
-> 향후 발전 방향: in-process Python 함수로 구현된 도구를 Claude Code Skill처럼
-> 폴더 단위(지침 + 스크립트)로 분리하면, 메인 코드를 건드리지 않는 완전한
-> 플러그인 구조로 확장할 수 있습니다.
+> **Phase 3 진행 현황**: 도구가 `agent/engine/tools/builtin/` 폴더에 개별
+> 파일로 분리되었고 `engine/tool_registry/registry.json` 기반 동적 로드 체계가
+> 도입되어, Claude Code Skill의 폴더 기반 플러그인 구조와 더 가까워졌습니다.
+> 이후 단계(`creation_pipeline` · `safety` · `sandbox`)가 추가되면 미지원
+> 요청에 대해 AI가 새 도구를 자동 생성·등록하는 **self-evolving** 구조가
+> 완성됩니다 — 자세한 내용은 `docs/ROADMAP.md` 참조.
 
 ---
 
@@ -258,7 +262,18 @@ Basic-SW-Tech/
 ├── agent/
 │   ├── llm_factory.py      # LLM 프로바이더 팩토리
 │   ├── prompt_enhancer.py  # 프롬프트 자동 보강 (의도 분류 + 보강 엔진)
-│   └── excel_agent.py      # tool-calling 에이전트 (9개 도구 + 결과 레지스트리)
+│   ├── excel_agent.py      # 호환 레이어 (registry 동적 로드 + _SYSTEM_PROMPT)
+│   └── engine/             # Phase 3 모듈화 (Self-evolving 준비)
+│       ├── orchestrator.py # 라우팅 (simple chat / tool_loop)
+│       ├── data/loader.py  # 데이터 접근 단일 게이트웨이 + 공유 상태
+│       ├── tool_registry/
+│       │   ├── registry.json   # 도구 메타데이터
+│       │   └── registry.py     # 동적 로드 + execute()
+│       ├── tools/
+│       │   ├── builtin/    # 9개 도구 (개별 파일)
+│       │   └── generated/  # AI 자동 생성 도구 (Phase 3 후반)
+│       ├── safety/         # AST 안전 검사 (예약)
+│       └── sandbox/        # 격리 실행 환경 (예약)
 ├── pages/
 │   ├── home.py             # 홈
 │   ├── chat.py             # 채팅 (메인 작업 공간)
@@ -266,5 +281,6 @@ Basic-SW-Tech/
 │   └── results.py          # 결과 보관함 (보조)
 ├── uploads/                # 업로드 파일 저장소
 ├── results/                # 처리 결과 저장소
-└── docs/img/            # README 실행 화면 캡쳐 위치
+├── chats/                  # 채팅 영속화 (id.json)
+└── docs/img/               # README 실행 화면 캡쳐 위치
 ```

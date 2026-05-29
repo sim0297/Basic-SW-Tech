@@ -6,8 +6,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import streamlit as st
 from langchain_core.messages import AIMessage, HumanMessage
 
+from agent.engine import orchestrator
 from agent.excel_agent import (
-    build_excel_agent,
     get_created_files,
     reset_created_files,
     set_file_manager,
@@ -273,9 +273,11 @@ if chat_in:
         # 프롬프트 자동 보강 — 의도 분류 → 작업 유형 템플릿으로 보강 지시 생성
         task_guidance = ""
         enhance_info = None
+        intent_for_route = None
         if enhance_on:
             has_files = bool(saved) or bool(file_manager.list_files())
             intent_result = classify_intent(prompt_text, has_files=has_files)
+            intent_for_route = intent_result.intent
             file_names = [f.name for f in file_manager.list_files()]
             task_guidance = enhance(
                 prompt_text,
@@ -290,14 +292,15 @@ if chat_in:
 
         with st.spinner("처리 중..."):
             try:
-                agent_exec = build_excel_agent(provider, model, temperature)
-                result = agent_exec.invoke(
-                    {
-                        "input": ctx,
-                        "chat_history": history,
-                        "task_guidance": task_guidance,
-                    },
-                    config={"recursion_limit": 20},
+                # Orchestrator 라우팅 — 일반 대화는 LLM 직답, 그 외는 tool_loop
+                result = orchestrator.run(
+                    prompt=ctx,
+                    provider=provider,
+                    model=model,
+                    temperature=temperature,
+                    chat_history=history,
+                    task_guidance=task_guidance,
+                    intent=intent_for_route,
                 )
                 answer = result.get("output", "처리 중 오류가 발생했습니다.")
             except Exception as e:
