@@ -1,5 +1,14 @@
+"""
+config/settings.py — 환경설정 스키마.
+
+운영에서 바뀌는 값들은 `.env` 에서 로드한다 (Pydantic Settings).
+경로(BASE_DIR 등)는 repo 위치에서 자동 계산하므로 .env 와 무관.
+"""
 from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_BASE_DIR = Path(__file__).resolve().parent.parent
 
 
 class Settings(BaseSettings):
@@ -9,22 +18,26 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    # ── Cloud API keys (선택 — 비워두면 클라우드 LLM 미사용) ─
     OPENAI_API_KEY: str = ""
     ANTHROPIC_API_KEY: str = ""
     GOOGLE_API_KEY: str = ""
-    OLLAMA_BASE_URL: str = "http://localhost:11434"
 
-    DEFAULT_PROVIDER: str = "ollama"
-    DEFAULT_MODEL: str = "qwen3:8b"
+    # ── LLM / Ollama (.env 필수) ──────────────────────────────
+    OLLAMA_BASE_URL: str
+    DEFAULT_PROVIDER: str
+    DEFAULT_MODEL: str
 
-    BASE_DIR: Path = Path(__file__).resolve().parent.parent
-    UPLOAD_DIR: Path = BASE_DIR / "uploads"
-    RESULTS_DIR: Path = BASE_DIR / "results"
-    CHATS_DIR: Path = BASE_DIR / "chats"
+    # ── App (.env 필수) ───────────────────────────────────────
+    APP_PORT: int
+    MAX_UPLOAD_SIZE_MB: int
 
-    MAX_UPLOAD_SIZE_MB: int = 100
+    # ── 정적 (코드 상수 / 컴퓨티드 경로 — .env 무관) ──────────
     APP_TITLE: str = "KETI AI Platform"
-    APP_PORT: int = 8705
+    BASE_DIR: Path = _BASE_DIR
+    UPLOAD_DIR: Path = _BASE_DIR / "uploads"
+    RESULTS_DIR: Path = _BASE_DIR / "results"
+    CHATS_DIR: Path = _BASE_DIR / "chats"
 
 
 def _init_settings() -> Settings:
