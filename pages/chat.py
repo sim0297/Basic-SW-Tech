@@ -50,6 +50,14 @@ def _render_enhance_info(info: dict | None) -> None:
         st.code(info.get("text", ""), language="markdown")
 
 
+def _render_tool_badge(generated_tools: list | None) -> None:
+    """이번 답변이 자동 생성(generated) 도구로 처리됐음을 표시한다 (20단계 투명성)."""
+    if not generated_tools:
+        return
+    names = ", ".join(f"`{t}`" for t in generated_tools)
+    st.caption(f"🧪 자동 생성된 도구 {names} 로 처리되었습니다 (검증 통과 도구).")
+
+
 def _render_result_files(paths: list, key_prefix: str) -> None:
     """에이전트가 생성한 결과 파일의 다운로드 버튼을 렌더링한다."""
     if not paths:
@@ -172,6 +180,9 @@ with st.sidebar:
 for idx, msg in enumerate(st.session_state.messages):
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
+        # 자동 생성 도구 사용 배지 재렌더링
+        if msg.get("generated_tools"):
+            _render_tool_badge(msg["generated_tools"])
         # 결과 파일이 첨부된 메시지는 다운로드 버튼도 재생성 (재렌더링 후에도 유지)
         if msg.get("files"):
             _render_result_files(msg["files"], key_prefix=f"hist_{idx}")
@@ -290,6 +301,7 @@ if chat_in:
                 "text": task_guidance,
             }
 
+        generated_tools: list = []
         with st.spinner("처리 중..."):
             try:
                 # Orchestrator 라우팅 — 일반 대화는 LLM 직답, 그 외는 tool_loop
@@ -303,6 +315,7 @@ if chat_in:
                     intent=intent_for_route,
                 )
                 answer = result.get("output", "처리 중 오류가 발생했습니다.")
+                generated_tools = result.get("generated_tools") or []
             except Exception as e:
                 answer = f"오류가 발생했습니다: {e}"
 
@@ -311,6 +324,7 @@ if chat_in:
         if not created:
             answer = _strip_file_guidance(answer)
         st.markdown(answer)
+        _render_tool_badge(generated_tools)
         _render_result_files(
             created, key_prefix=f"dl_{len(st.session_state.messages)}"
         )
@@ -321,6 +335,7 @@ if chat_in:
                 "content": answer,
                 "files": [str(p) for p in created],
                 "enhance": enhance_info,
+                "generated_tools": generated_tools,
             }
         )
         chat_store.save(st.session_state.chat_session)  # 디스크 저장

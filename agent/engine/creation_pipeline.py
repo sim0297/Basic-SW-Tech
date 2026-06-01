@@ -21,6 +21,7 @@ from __future__ import annotations
 import ast
 import json
 import re
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -65,6 +66,63 @@ def get_audit_log() -> list[tuple[str, str]]:
 
 def _reset_log() -> None:
     _audit_log.clear()
+
+
+# ──────────────────────────────────────────────────────────
+# 감사 로그 영속화 (20단계)
+#   사양·생성 코드·정적 검사·sandbox 결과·최종 검증 결과를 파일로 남긴다.
+#   ⚠️ 코드·중간 산출물은 감사 로그에만 기록하고 사용자 응답에는 노출하지 않는다.
+# ──────────────────────────────────────────────────────────
+
+
+def _persist_audit(
+    kind: str,
+    subject: str,
+    spec: Optional[dict],
+    code: str,
+    success: bool,
+    result_msg: str,
+) -> Optional[Path]:
+    """이번 생성/리팩터 시도의 전체 감사 기록을 JSON 파일로 저장한다."""
+    try:
+        from config.settings import settings
+
+        ts = datetime.now()
+        name = (spec or {}).get("name") or _safe_name(subject)[:40] or "unknown"
+        record = {
+            "kind": kind,                       # create | refactor | reuse
+            "subject": subject,
+            "success": success,
+            "spec": spec,
+            "generated_code": code,             # 검증 통과 시점의 코드 (감사용)
+            "audit_steps": [
+                {"step": s, "content": c} for s, c in _audit_log
+            ],
+            "result_message": result_msg,
+            "timestamp": ts.isoformat(timespec="seconds"),
+        }
+        path = settings.AUDIT_DIR / f"{ts.strftime('%Y%m%d_%H%M%S')}_{kind}_{name}.json"
+        path.write_text(
+            json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        return path
+    except Exception as e:  # noqa: BLE001  — 감사 로그 실패가 본 기능을 막지 않음
+        print(f"[creation_pipeline] 감사 로그 저장 실패: {e}")
+        return None
+
+
+def _finish(
+    kind: str,
+    success: bool,
+    msg: str,
+    *,
+    subject: str = "",
+    spec: Optional[dict] = None,
+    code: str = "",
+) -> str:
+    """종료 직전 감사 로그를 남기고 사용자 응답 메시지만 반환한다."""
+    _persist_audit(kind, subject, spec, code, success, msg)
+    return msg
 
 
 # ──────────────────────────────────────────────────────────
@@ -395,13 +453,15 @@ def run(user_intent: str) -> str:
         _log("Spec", json.dumps(spec, ensure_ascii=False))
     except Exception as e:
         _log("Spec 실패", str(e))
-        return _failure_msg(f"Spec 단계 실패: {e}")
+        return _finish("create", False, _failure_msg(f"Spec 단계 실패: {e}"),
+                       subject=user_intent)
 
     # 1.5) 재사용 가드 (19단계) — 유사한 generated 도구가 이미 있으면 재생성 안 함
     reusable = _find_reusable(spec)
     if reusable is not None:
         _log("Reuse", f"{reusable['name']} (v{reusable.get('version', 1)})")
-        return _reuse_msg(reusable)
+        return _finish("reuse", True, _reuse_msg(reusable),
+                       subject=user_intent, spec=spec)
 
     # 2) Coder → Compliance → Test → (ReviewFix → Coder)*
     feedback: Optional[str] = None
@@ -413,7 +473,8 @@ def run(user_intent: str) -> str:
             _log(f"Coder (시도 {attempt + 1})", code[:300])
         except Exception as e:
             _log("Coder 실패", str(e))
-            return _failure_msg(f"Coder 단계 실패: {e}")
+            return _finish("create", False, _failure_msg(f"Coder 단계 실패: {e}"),
+                           subject=user_intent, spec=spec)
 
         # 16단계 — 스캐폴드 컴플라이언스 게이트
         compliant, comp_reason = _compliance_agent(code, spec)
@@ -453,8 +514,10 @@ def run(user_intent: str) -> str:
         )
         _log(f"ReviewFix (시도 {attempt + 1})", last_reason)
     else:
-        return _failure_msg(
-            f"최대 재시도 {_MAX_RETRIES}회 초과 — 마지막 사유: {last_reason}"
+        return _finish(
+            "create", False,
+            _failure_msg(f"최대 재시도 {_MAX_RETRIES}회 초과 — 마지막 사유: {last_reason}"),
+            subject=user_intent, spec=spec, code=code,
         )
 
     # 3) Register
@@ -463,9 +526,11 @@ def run(user_intent: str) -> str:
         _log("Register", registered_path)
     except Exception as e:
         _log("Register 실패", str(e))
-        return _failure_msg(f"Register 단계 실패: {e}")
+        return _finish("create", False, _failure_msg(f"Register 단계 실패: {e}"),
+                       subject=user_intent, spec=spec, code=code)
 
-    return _success_msg(spec, registered_path)
+    return _finish("create", True, _success_msg(spec, registered_path),
+                   subject=user_intent, spec=spec, code=code)
 
 
 # ──────────────────────────────────────────────────────────
@@ -568,16 +633,20 @@ def refactor_tool(name: str, instruction: str) -> str:
 
     entry = manager.find(name)
     if entry is None:
-        return _failure_msg(f"도구 '{name}' 가 등록되어 있지 않습니다.")
+        return _finish("refactor", False,
+                       _failure_msg(f"도구 '{name}' 가 등록되어 있지 않습니다."),
+                       subject=name)
     if entry.get("source") != "generated":
-        return _failure_msg(
+        return _finish("refactor", False, _failure_msg(
             f"'{name}' 은 builtin 도구라 refactor 대상이 아닙니다 "
             "(generated 도구만 개선할 수 있습니다)."
-        )
+        ), subject=name)
 
     old_code = manager.read_code(name)
     if not old_code:
-        return _failure_msg(f"'{name}' 의 소스 코드를 찾을 수 없습니다.")
+        return _finish("refactor", False,
+                       _failure_msg(f"'{name}' 의 소스 코드를 찾을 수 없습니다."),
+                       subject=name)
 
     spec = {"name": name, "description": entry.get("description", ""), "inputs": []}
 
@@ -589,7 +658,9 @@ def refactor_tool(name: str, instruction: str) -> str:
             code = _refactor_coder(old_code, instruction, name, feedback)
             _log(f"Coder/refactor (시도 {attempt + 1})", code[:300])
         except Exception as e:  # noqa: BLE001
-            return _failure_msg(f"Coder(refactor) 단계 실패: {e}")
+            return _finish("refactor", False,
+                           _failure_msg(f"Coder(refactor) 단계 실패: {e}"),
+                           subject=name, spec=spec)
 
         compliant, comp_reason = _compliance_agent(code, spec)
         _log(f"Compliance/refactor (시도 {attempt + 1})", comp_reason)
@@ -612,14 +683,16 @@ def refactor_tool(name: str, instruction: str) -> str:
         last_reason = f"Sandbox: {sb_reason}"
         feedback = f"이전 코드가 sandbox 실행 실패: {sb_reason}\n예외 없이 실행되게 고쳐라."
     else:
-        return _failure_msg(
+        return _finish("refactor", False, _failure_msg(
             f"refactor 재시도 {_MAX_RETRIES}회 초과 — 마지막 사유: {last_reason} "
             f"(기존 `{name}` 은 그대로 유지됨)"
-        )
+        ), subject=name, spec=spec, code=code)
 
     new_version = manager.update(name, code=code)
     _log("Update", f"{name} → v{new_version}")
-    return _refactor_success_msg(name, new_version, instruction)
+    return _finish("refactor", True,
+                   _refactor_success_msg(name, new_version, instruction),
+                   subject=name, spec=spec, code=code)
 
 
 # ──────────────────────────────────────────────────────────

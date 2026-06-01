@@ -158,4 +158,6 @@ def build_excel_agent(
         verbose=False,
         max_iterations=10,
         handle_parsing_errors=True,
+        # 20단계: 어떤 도구가 호출됐는지 추적 (자동 생성 도구 사용 투명성 배지용)
+        return_intermediate_steps=True,
     )

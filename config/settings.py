@@ -41,6 +41,8 @@ class Settings(BaseSettings):
     UPLOAD_DIR: Path = _BASE_DIR / "uploads"
     RESULTS_DIR: Path = _BASE_DIR / "results"
     CHATS_DIR: Path = _BASE_DIR / "chats"
+    # Phase 3 / 20단계 — self-evolving 감사 로그 (사양·코드·검증 결과)
+    AUDIT_DIR: Path = _BASE_DIR / "logs" / "audit"
 
 
 def _init_settings() -> Settings:
@@ -48,6 +50,7 @@ def _init_settings() -> Settings:
     s.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     s.RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     s.CHATS_DIR.mkdir(parents=True, exist_ok=True)
+    s.AUDIT_DIR.mkdir(parents=True, exist_ok=True)
     return s
 
 

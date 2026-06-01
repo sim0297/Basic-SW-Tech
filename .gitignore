@@ -20,6 +20,9 @@ results/*.xlsx
 results/*.csv
 chats/*.json
 
+# ── self-evolving 감사 로그 (Phase 3 / 20단계) ──
+logs/
+
 # ── 앱 설정 (호스트별) ──
 .streamlit/
 

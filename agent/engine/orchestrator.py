@@ -25,6 +25,24 @@ def is_simple_chat(intent: TaskIntent) -> bool:
     return intent == TaskIntent.GENERAL
 
 
+def _generated_tools_used(intermediate_steps: list) -> list[str]:
+    """AgentExecutor 의 intermediate_steps 에서 호출된 generated 도구명을 추린다."""
+    if not intermediate_steps:
+        return []
+    from agent.engine.tool_registry import manager
+
+    used: list[str] = []
+    for step in intermediate_steps:
+        action = step[0] if isinstance(step, (tuple, list)) and step else step
+        tool_name = getattr(action, "tool", None)
+        if not tool_name or tool_name in used:
+            continue
+        entry = manager.find(tool_name)
+        if entry and entry.get("source") == "generated":
+            used.append(tool_name)
+    return used
+
+
 def _simple_chat(
     prompt: str,
     provider: str,
@@ -96,7 +114,13 @@ def _tool_loop(
             "user_intent": pending_intent,
         }
 
-    return {"output": answer, "route": "tool_loop"}
+    # 20단계 — 이번 답변에 자동 생성(generated) 도구가 쓰였는지 추적 (투명성 배지용)
+    generated_used = _generated_tools_used(result.get("intermediate_steps", []))
+    return {
+        "output": answer,
+        "route": "tool_loop",
+        "generated_tools": generated_used,
+    }
 
 
 def run(
