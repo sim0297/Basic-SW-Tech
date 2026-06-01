@@ -70,5 +70,13 @@
     "function": "get_statistics",
     "source": "builtin",
     "version": 1
+  },
+  {
+    "name": "request_new_tool",
+    "description": "[메타] 기존 도구로 처리할 수 없는 요청을 위해 새 도구 생성을 요청 — creation_pipeline 진입점",
+    "module": "agent.engine.tools.builtin.request_new_tool",
+    "function": "request_new_tool",
+    "source": "builtin",
+    "version": 1
   }
 ]

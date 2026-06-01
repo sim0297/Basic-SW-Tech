@@ -4,7 +4,9 @@ Tool Registry — Phase 3 / 12단계
 `registry.json` 의 메타데이터를 읽어 도구 모듈을 동적 import 하고,
 LangChain `@tool` 객체 리스트를 노출한다 (읽기 전용).
 
-CRUD/refactor 는 19단계에서 manager.py 에 분리될 예정.
+CRUD/refactor/promote 등 **영속 변경**은 19단계의 `manager.py` 가 담당한다
+(manager 가 쓰기 후 모듈 캐시를 무효화하므로, 이 모듈의 동적 import 는 항상
+최신 코드를 로드한다).
 """
 from __future__ import annotations
 

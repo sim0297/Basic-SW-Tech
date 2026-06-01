@@ -62,10 +62,17 @@ def _tool_loop(
     chat_history: list[BaseMessage],
     task_guidance: str,
 ) -> dict:
-    """registry 의 도구로 tool-calling 에이전트를 돌린다."""
-    # 13단계 — 기존 build_excel_agent 재사용 (시스템 프롬프트·_SYSTEM_PROMPT 그대로).
-    # 14단계에서 request_new_tool 메타 도구가 추가될 때 이 부분도 분리될 예정.
+    """
+    registry 의 도구로 tool-calling 에이전트를 돌린다.
+
+    Phase 3 / 14단계 — agent 가 `request_new_tool` 메타 도구를 호출하면
+    creation_pipeline 으로 분기한다 (한 요청당 1회).
+    """
+    from agent.engine import creation_pipeline
     from agent.excel_agent import build_excel_agent
+
+    # 이전 요청의 잔재 제거 — 한 요청당 새 도구 생성 시도 1회 보장
+    creation_pipeline.reset_pending()
 
     agent_exec = build_excel_agent(provider, model, temperature)
     result = agent_exec.invoke(
@@ -76,10 +83,20 @@ def _tool_loop(
         },
         config={"recursion_limit": 20},
     )
-    return {
-        "output": result.get("output", "처리 중 오류가 발생했습니다."),
-        "route": "tool_loop",
-    }
+    answer = result.get("output", "처리 중 오류가 발생했습니다.")
+
+    # request_new_tool 이 호출됐는지 가로채기 → creation_pipeline 으로 분기
+    pending_intent = creation_pipeline.get_pending()
+    if pending_intent:
+        creation_output = creation_pipeline.run(pending_intent)
+        creation_pipeline.reset_pending()
+        return {
+            "output": creation_output,
+            "route": "creation_pipeline",
+            "user_intent": pending_intent,
+        }
+
+    return {"output": answer, "route": "tool_loop"}
 
 
 def run(

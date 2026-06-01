@@ -19,8 +19,13 @@ from agent.engine.tool_registry import registry
 from agent.llm_factory import get_llm
 
 # ──────────────────────────────────────────────────────────
-# 도구 — registry 에서 동적 로드 (현재 9개 builtin)
+# 도구 — registry 에서 동적 로드
 # ──────────────────────────────────────────────────────────
+#
+# 19단계: 도구는 호출 시점마다 registry 에서 다시 로드한다. creation_pipeline /
+# manager 가 같은 프로세스에서 새 도구를 등록하거나 refactor 하면(모듈 캐시
+# 무효화 포함) 앱 재시작 없이 다음 turn 부터 반영된다.
+# `ALL_TOOLS` 는 기존 임포트 호환을 위해 모듈 로드 시점의 스냅샷으로 유지한다.
 
 ALL_TOOLS = registry.get_tools()
 
@@ -65,6 +70,15 @@ _SYSTEM_PROMPT = """당신은 엑셀/CSV 파일 처리와 일반 대화를 함�
 - filter_file: 조건으로 행 필터링
 - aggregate_file: 그룹별 집계
 - get_statistics: 통계 요약
+- request_new_tool: [메타 도구] 기존 도구로 처리할 수 없는 요청일 때 새 도구
+  생성을 요청 — creation_pipeline 진입점
+
+[기존 도구로 불가능한 요청]
+사용자의 요청이 위 도구들로 처리 불가하다고 판단되면 거절하지 말고
+`request_new_tool(user_intent="<원하는 작업 명확히>")` 를 한 번만 호출하세요.
+예: "피벗 테이블 생성", "월별 추이 차트", "시트 한 파일에 통합".
+이 호출은 orchestrator 가 가로채 자동 도구 생성 파이프라인으로 분기합니다.
+한 사용자 요청에 request_new_tool 은 딱 한 번만 호출합니다.
 
 특정 항목 조회 주의:
 - "X 항목의 값은?" 같은 질문은 read_file_preview 만으로 판단하지 마세요.
@@ -126,6 +140,9 @@ def build_excel_agent(
 ) -> AgentExecutor:
     llm = get_llm(provider, model, temperature=temperature)
 
+    # 19단계: 매 빌드마다 registry 에서 최신 도구 목록을 로드 (모듈 상수 X)
+    tools = registry.get_tools()
+
     prompt = ChatPromptTemplate.from_messages([
         ("system", _SYSTEM_PROMPT),
         ("system", "{task_guidance}"),
@@ -134,10 +151,10 @@ def build_excel_agent(
         MessagesPlaceholder("agent_scratchpad"),
     ])
 
-    agent = create_tool_calling_agent(llm, ALL_TOOLS, prompt)
+    agent = create_tool_calling_agent(llm, tools, prompt)
     return AgentExecutor(
         agent=agent,
-        tools=ALL_TOOLS,
+        tools=tools,
         verbose=False,
         max_iterations=10,
         handle_parsing_errors=True,

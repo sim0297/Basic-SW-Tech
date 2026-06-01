@@ -34,3 +34,4 @@ chats/*.json
 # ── 로컬 전용 문서 (의도적으로 git 외부 보관) ──
 CLAUDE.md
 docs/ROADMAP.md
+tests/

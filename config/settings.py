@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     DEFAULT_PROVIDER: str
     DEFAULT_MODEL: str
 
+    # ── Phase 3 Coder 서브에이전트 (선택 — 비우면 DEFAULT_MODEL 폴백) ──
+    CODER_MODEL: str = ""
+
     # ── App (.env 필수) ───────────────────────────────────────
     APP_PORT: int
     MAX_UPLOAD_SIZE_MB: int
